@@ -1,14 +1,17 @@
-from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-app = FastAPI()
+from db import close, connect
+from routers.stock import router as stock_router
 
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    connect()
+    yield
+    close()
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Optional[str] = None):
-    return {"item_id": item_id, "q": q}
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(stock_router, prefix="/fp/api/v1")
