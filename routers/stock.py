@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pymongo import UpdateOne
 
 from db import get_db
 from models import (
@@ -237,8 +238,8 @@ def _parse_and_upsert(csv_text: str, exchange: str) -> tuple[int, list[str]]:
     )
 
     reader = csv.DictReader(io.StringIO(csv_text))
-    count = 0
     new_isins = set()
+    entries_by_doc: dict[str, list[dict]] = {}
 
     for row in reader:
         isin = row.get("ISIN", "").strip()
@@ -261,23 +262,36 @@ def _parse_and_upsert(csv_text: str, exchange: str) -> tuple[int, list[str]]:
             "tq": _parse_int(row["TtlTradgVol"]),
             "tv": _parse_float(row["TtlTrfVal"]),
             "tt": _parse_int(row["TtlNbOfTxsExctd"]),
+            "sr": row.get("SctySrs", "").strip() or None,
         }
+        if exchange == "bse":
+            sc = row.get("FinInstrmId", "").strip()
+            if sc:
+                entry["sc"] = sc
 
-        # Overwrite: pull existing entry for same date+exchange, then push
-        collection.update_one(
-            {"_id": doc_id},
-            {"$pull": {"d": {"dt": trade_dt, "ex": exchange}}},
-        )
-        collection.update_one(
-            {"_id": doc_id},
-            {"$push": {"d": entry}},
-            upsert=True,
-        )
-        count += 1
+        entries_by_doc.setdefault(doc_id, []).append(entry)
 
         if isin not in existing_isins:
             new_isins.add(isin)
 
+    if not entries_by_doc:
+        return 0, []
+
+    # Bulk push: add all entries grouped by doc
+    push_ops = [
+        UpdateOne(
+            {"_id": doc_id},
+            {
+                "$push": {"d": {"$each": entries}},
+                "$setOnInsert": {"i": doc_id.rsplit("_", 1)[0]},
+            },
+            upsert=True,
+        )
+        for doc_id, entries in entries_by_doc.items()
+    ]
+    collection.bulk_write(push_ops, ordered=False)
+
+    count = sum(len(entries) for entries in entries_by_doc.values())
     return count, sorted(new_isins)
 
 
