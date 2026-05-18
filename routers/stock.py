@@ -64,10 +64,13 @@ def search(
 ):
     db = get_db()
     regex = {"$regex": f".*{re.escape(q)}.*", "$options": "i"}
+    or_conditions: list[dict] = [{"COMPANY_NAME": regex}, {"NSE_SYMBOL": regex}]
+    if q.isdigit():
+        or_conditions.append({"BSE_CODE": int(q)})
     cursor = (
         db["isin"]
         .find(
-            {"COMPANY_NAME": regex},
+            {"$or": or_conditions},
             {"_id": 1, "COMPANY_NAME": 1, "NSE_SYMBOL": 1, "BSE_CODE": 1},
         )
         .limit(limit)
