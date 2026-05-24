@@ -1,2 +1,5 @@
 fastapi[all]
 pymongo[srv]
+google-auth
+python-jose[cryptography]
+requests
