@@ -30,7 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:4200",
-        "https://naridnevahgar.github.io",
+        "https://macronalyze.github.io",
     ],
     allow_credentials=True,
     allow_methods=["*"],
